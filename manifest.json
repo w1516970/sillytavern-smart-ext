@@ -6,7 +6,7 @@
     "js": "index.js",
     "css": "style.css",
     "author": "SmartHub",
-    "version": "1.0.0",
-    "homePage": "https://github.com/smart-hub/sillytavern-extension",
+    "version": "1.1.0",
+    "homePage": "https://github.com/w1516970/sillytavern-smart-ext",
     "auto_update": true
 }
