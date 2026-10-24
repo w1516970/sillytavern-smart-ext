@@ -197,11 +197,37 @@ function openChatWindow() {
                     ${S.autoSearch ? '<span class="sh-badge">🔍 联网搜索开</span>' : '<span class="sh-badge sh-badge-off">🔍 联网搜索关</span>'}
                 </div>
                 <div class="sh-chat-head-btns">
+                    <span class="sh-chat-gear" title="对话配置">⚙</span>
                     <span class="sh-chat-clear" title="清空对话">🗑</span>
                     <span class="sh-chat-close" title="关闭">✕</span>
                 </div>
             </div>
             <div class="sh-chat-body">
+                <div id="sh-chat-config" class="sh-chat-config" style="display:none">
+                    <div class="sh-sec">
+                        <div class="sh-sec-title">API 配置</div>
+                        <div class="sh-row"><label>API 地址</label><input id="sh-cfg-url" type="text" placeholder="https://api.example.com"></div>
+                        <div class="sh-row"><label>API 密钥</label><input id="sh-cfg-key" type="password" placeholder="sk-...（可留空）"></div>
+                        <div class="sh-row">
+                            <button id="sh-cfg-pull" class="menu_button"><i class="fa-solid fa-rotate"></i> 拉取模型</button>
+                            <select id="sh-cfg-model"><option value="">-- 选择模型 --</option></select>
+                        </div>
+                    </div>
+                    <div class="sh-sec">
+                        <div class="sh-sec-title">对话选项</div>
+                        <div class="sh-row"><label class="checkbox_label"><input id="sh-cfg-search" type="checkbox"><span>对话时联网搜索（必应）</span></label></div>
+                        <div class="sh-row"><label>搜索接口</label><input id="sh-cfg-searchurl" type="text" placeholder="http://127.0.0.1:5123/search"></div>
+                        <div class="sh-row">
+                            <label>引擎</label>
+                            <select id="sh-cfg-engine">
+                                <option value="bing">必应</option>
+                                <option value="bing_cn">必应中国版</option>
+                                <option value="duckduckgo">DuckDuckGo</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="sh-hint" style="text-align:center">更多设置（向量记忆/聊天记录等）在 魔法棒 → 扩展设置 → Smart Hub</div>
+                </div>
                 <div id="sh-chat-messages"></div>
                 <div id="sh-chat-status" class="sh-chat-status"></div>
             </div>
@@ -213,6 +239,43 @@ function openChatWindow() {
     $('body').append($w);
     renderHistory();
     $w.find('.sh-chat-close').on('click', () => $w.remove());
+    // 配置面板开关
+    const fillCfg = () => {
+        $('#sh-cfg-url').val(S.apiUrl);
+        $('#sh-cfg-key').val(S.apiKey);
+        $('#sh-cfg-search').prop('checked', S.autoSearch);
+        $('#sh-cfg-searchurl').val(S.searchUrl);
+        $('#sh-cfg-engine').val(S.searchEngine);
+        const $sel = $('#sh-cfg-model').empty();
+        $sel.append('<option value="">-- 选择模型 --</option>');
+        for (const m of (S.modelCache || [])) $sel.append(`<option value="${m}">${m}</option>`);
+        $sel.val(S.selectedModel || '');
+    };
+    $w.find('.sh-chat-gear').on('click', () => {
+        const $cfg = $('#sh-chat-config');
+        const show = !$cfg.is(':visible');
+        if (show) fillCfg();
+        $cfg.toggle(show);
+    });
+    $('#sh-cfg-url').on('input', debounce(function () { S.apiUrl = $(this).val().replace(/\/+$/, ''); saveSettingsDebounced(); }, 400));
+    $('#sh-cfg-key').on('input', debounce(function () { S.apiKey = $(this).val(); saveSettingsDebounced(); }, 400));
+    $('#sh-cfg-search').on('change', function () { S.autoSearch = $(this).prop('checked'); saveSettingsDebounced(); updateBadge(); });
+    $('#sh-cfg-searchurl').on('input', debounce(function () { S.searchUrl = $(this).val(); saveSettingsDebounced(); }, 400));
+    $('#sh-cfg-engine').on('change', function () { S.searchEngine = $(this).val(); saveSettingsDebounced(); });
+    $('#sh-cfg-model').on('change', function () { S.selectedModel = $(this).val(); saveSettingsDebounced(); });
+    $('#sh-cfg-pull').on('click', async () => {
+        chatStatus('正在拉取模型列表...', 'warn');
+        try {
+            S.modelCache = await fetchModels(S.apiUrl, S.apiKey);
+            saveSettingsDebounced(); fillCfg();
+            chatStatus(`拉取成功，共 ${S.modelCache.length} 个模型，请在下拉框选择`, 'ok');
+        } catch (e) { chatStatus(`拉取失败：${e.message}`, 'err'); }
+    });
+    function updateBadge() {
+        $w.find('.sh-badge').replaceWith(S.autoSearch
+            ? '<span class="sh-badge">🔍 联网搜索开</span>'
+            : '<span class="sh-badge sh-badge-off">🔍 联网搜索关</span>');
+    }
     $w.find('.sh-chat-clear').on('click', () => {
         if (!confirm('确定清空当前独立对话记录吗？')) return;
         S.chatHistory = []; saveSettingsDebounced(); renderHistory();
@@ -362,6 +425,31 @@ function openChatViewer() {
             </div>
             <div class="sh-viewer-body">${html || '<p style="opacity:.6">当前会话没有消息</p>'}</div>
         </div>`).on('click', '.sh-popup-close', function () { $(this).closest('#sh-chat-viewer').remove(); }));
+}
+
+// ==================== 魔法棒快捷菜单入口 ====================
+function addWandMenuButton() {
+    const $menu = $('#extensionsMenu');
+    if (!$menu.length) {
+        LOG('未找到魔法棒菜单 #extensionsMenu，仅保留扩展设置入口');
+        return;
+    }
+    $('#sh-menu-item').remove();
+    const $item = $(`
+        <div id="sh-menu-item" class="list-item">
+            <a class="list-group-item flex-container flexGap5 interactable" title="Smart Hub 独立对话（点击打开/关闭）">
+                <i class="fa-solid fa-comments sh-menu-icon"></i><span>Smart Hub 对话</span>
+            </a>
+        </div>`);
+    $item.on('click', () => {
+        // 关闭魔法棒下拉菜单（模拟点击外部区域）
+        $('#sh-menu-item').closest('.extensions_menu').hide().parent().removeClass('openMenu');
+        const $win = $('#sh-chat-window');
+        if ($win.length) $win.remove();   // 已开则关闭（toggle 效果）
+        else openChatWindow();
+    });
+    $menu.append($item);
+    LOG('魔法棒菜单入口已添加 ✓');
 }
 
 // ==================== UI（魔法棒面板） ====================
@@ -561,5 +649,6 @@ function buildUI() {
 // ==================== 初始化 ====================
 jQuery(async () => {
     buildUI();
-    LOG('v1.2.0 加载完成 ✓');
+    addWandMenuButton();
+    LOG('v1.3.0 加载完成 ✓');
 });
