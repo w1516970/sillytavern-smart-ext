@@ -1,6 +1,7 @@
-// Smart Hub - 智能中枢 · SillyTavern 扩展 (v1.1.0)
-// 简洁模式：只在魔法棒(扩展设置)显示，主开关控制联网搜索，
-// 开启后当前对话 API 每轮生成前自动用必应搜索并注入结果。
+// Smart Hub - 智能中枢 · SillyTavern 扩展 (v1.2.0)
+// 独立对话插件：从魔法棒(扩展设置)打开独立聊天窗口，
+// 使用独立 API 对话，开启联网搜索后每轮自动必应搜索并作为上下文。
+// 另支持：附加酒馆完整聊天记录(含隐藏/无视正则)、向量记忆检索。
 
 import { extension_settings, getContext } from '../../../extensions.js';
 import { saveSettingsDebounced } from '../../../../script.js';
@@ -10,23 +11,28 @@ const MODULE = 'smart-hub';
 const LOG = (...m) => console.log('[SmartHub]', ...m);
 
 const defaultSettings = {
-    // 主开关：联网搜索
-    autoSearch: true,
     // 独立 API
     apiUrl: '',
     apiKey: '',
     selectedModel: '',
     modelCache: [],
+    systemPrompt: '你是智能助手。回答时优先参考给出的联网搜索结果和历史资料，并注明信息来源。若信息不足请如实说明。',
     // 搜索
+    autoSearch: true,        // 对话时自动联网搜索
     searchUrl: 'http://127.0.0.1:5123/search',
     searchEngine: 'bing',
     searchCount: 5,
-    // 高级：向量记忆
+    // 上下文
+    includeTavernChat: false, // 附加酒馆完整聊天记录(含隐藏)
+    tavernChatLimit: 20,      // 附加最近 N 条
+    // 向量记忆
     memoryEnabled: false,
     embedApiUrl: '', embedApiKey: '', embedModel: '',
     rerankApiUrl: '', rerankApiKey: '', rerankModel: '',
     memoryTopK: 5, memoryRerank: true, memoryScore: 0.3,
     vectors: {},
+    // 独立对话记录
+    chatHistory: [],          // [{role, content, time}]
 };
 
 function getSettings() {
@@ -49,6 +55,13 @@ function status(msg, type = 'ok') {
     $el.removeClass('sh-ok sh-err sh-warn').addClass(`sh-${type}`);
     $el.text(`[${new Date().toLocaleTimeString()}] ${msg}`);
     LOG(msg);
+}
+
+function chatStatus(msg, type = 'ok') {
+    const $el = $('#sh-chat-status');
+    if (!$el.length) return;
+    $el.removeClass('sh-ok sh-err sh-warn').addClass(`sh-${type}`);
+    $el.text(msg);
 }
 
 async function apiFetch(baseUrl, apiKey, path, body) {
@@ -87,11 +100,6 @@ function cosine(a, b) {
     return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
 }
 
-function setExtPrompt(key, value) {
-    const ctx = getContext();
-    if (ctx.setExtensionPrompt) ctx.setExtensionPrompt(key, value, 1, 1);
-}
-
 // ==================== 完整聊天记录（无视隐藏/正则） ====================
 function getFullChat() {
     const chat = getContext().chat || [];
@@ -109,7 +117,6 @@ function getFullChat() {
     }
     return msgs;
 }
-const chatToTranscript = (msgs) => msgs.map(m => `${m.name}${m.hidden ? ' [隐藏]' : ''}: ${m.text}`).join('\n\n');
 
 // ==================== 必应搜索 ====================
 async function webSearch(query) {
@@ -127,16 +134,9 @@ async function webSearch(query) {
 
 const formatResults = (results) =>
     `[联网搜索结果 - ${new Date().toLocaleString()}]\n` +
-    results.map((r, i) => `[${i + 1}] ${r.title}\nURL: ${r.url}\n${r.snippet || ''}`).join('\n\n');
+    results.map((r, i) => `[${i + 1}] ${r.title}(${r.url})\n${r.snippet || ''}`).join('\n\n');
 
-async function autoSearchInject(query) {
-    const results = await webSearch(query);
-    setExtPrompt('smart-hub-search', formatResults(results));
-    LOG(`联网搜索完成：${query} -> ${results.length} 条结果已注入`);
-    return results;
-}
-
-// ==================== 向量记忆（完整聊天记录检索） ====================
+// ==================== 向量记忆 ====================
 async function embedTexts(texts) {
     const url = S.embedApiUrl || S.apiUrl;
     const key = S.embedApiKey || S.apiKey;
@@ -183,45 +183,188 @@ async function retrieveMemory(query, force = false) {
         .map(s => `- ${s.text}`).join('\n');
 }
 
-// ==================== 生成前钩子：核心逻辑 ====================
-async function onGenerationStarted(_type, _options, dryRun) {
-    if (dryRun) return;
-    const ctx = getContext();
-    const lastUser = [...(ctx.chat || [])].reverse().find(m => m.is_user);
-    const query = ($('#send_textarea').val() || '').trim() || lastUser?.mes || '';
-    if (!query) return;
+// ==================== 独立对话窗口 ====================
+let sending = false;
 
-    // 联网搜索（主开关）
-    if (S.autoSearch) {
-        if (!S.searchUrl) {
-            status('联网搜索已开启，但未配置搜索接口，请启动 bridge/server.mjs', 'warn');
-        } else {
+function openChatWindow() {
+    $('#sh-chat-window').remove();
+    const $w = $(`
+        <div id="sh-chat-window" class="sh-open">
+            <div class="sh-chat-head">
+                <div class="sh-chat-head-title">
+                    <i class="fa-solid fa-comments"></i>
+                    <span>Smart Hub 独立对话</span>
+                    ${S.autoSearch ? '<span class="sh-badge">🔍 联网搜索开</span>' : '<span class="sh-badge sh-badge-off">🔍 联网搜索关</span>'}
+                </div>
+                <div class="sh-chat-head-btns">
+                    <span class="sh-chat-clear" title="清空对话">🗑</span>
+                    <span class="sh-chat-close" title="关闭">✕</span>
+                </div>
+            </div>
+            <div class="sh-chat-body">
+                <div id="sh-chat-messages"></div>
+                <div id="sh-chat-status" class="sh-chat-status"></div>
+            </div>
+            <div class="sh-chat-input-bar">
+                <textarea id="sh-chat-input" rows="1" placeholder="输入消息，Enter 发送（Shift+Enter 换行）"></textarea>
+                <button id="sh-chat-send" class="menu_button" title="发送"><i class="fa-solid fa-paper-plane"></i></button>
+            </div>
+        </div>`);
+    $('body').append($w);
+    renderHistory();
+    $w.find('.sh-chat-close').on('click', () => $w.remove());
+    $w.find('.sh-chat-clear').on('click', () => {
+        if (!confirm('确定清空当前独立对话记录吗？')) return;
+        S.chatHistory = []; saveSettingsDebounced(); renderHistory();
+    });
+    const $input = $w.find('#sh-chat-input');
+    $input.on('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+    });
+    $input.on('input', function () {
+        this.style.height = 'auto';
+        this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+    });
+    $w.find('#sh-chat-send').on('click', () => sendChat());
+    setTimeout(() => $input.trigger('focus'), 100);
+}
+
+function renderHistory() {
+    const $box = $('#sh-chat-messages');
+    if (!$box.length) return;
+    $box.empty();
+    if (!S.chatHistory.length) {
+        $box.append(`<div class="sh-chat-empty">👋 开始你的独立对话吧。<br>当前模型：<b>${S.selectedModel || '未选择（去高级选项配置）'}</b><br>联网搜索：<b>${S.autoSearch ? '开' : '关'}</b></div>`);
+        return;
+    }
+    for (const m of S.chatHistory) {
+        if (m.role === 'system') continue;
+        $box.append(chatBubble(m.role, m.content, m.searched));
+    }
+    $box.scrollTop($box[0].scrollHeight);
+}
+
+function chatBubble(role, content, searched) {
+    const esc = $('<i>').text(content).html();
+    return `<div class="sh-bubble sh-${role === 'user' ? 'user' : 'ai'}">
+        <div class="sh-bubble-tag">${role === 'user' ? '你' : 'AI'}${searched ? ' · 🔍已联网' : ''}</div>
+        <div class="sh-bubble-body">${esc}</div>
+    </div>`;
+}
+
+async function sendChat() {
+    if (sending) return;
+    const $input = $('#sh-chat-input');
+    const text = ($input.val() || '').trim();
+    if (!text) return;
+
+    if (!S.apiUrl) { chatStatus('请先在魔法棒面板的高级选项中配置独立 API 地址', 'err'); return; }
+    if (!S.selectedModel) { chatStatus('请先在高级选项中拉取并选择模型', 'err'); return; }
+
+    sending = true;
+    $input.val('').trigger('input');
+    const $box = $('#sh-chat-messages');
+    $box.find('.sh-chat-empty').remove();
+
+    // 用户气泡
+    $box.append(chatBubble('user', text));
+    $box.scrollTop($box[0].scrollHeight);
+
+    try {
+        // 1) 联网搜索
+        let searchBlock = '';
+        let searched = false;
+        if (S.autoSearch && S.searchUrl) {
+            chatStatus('🔍 正在必应搜索...', 'warn');
             try {
-                status('联网搜索中（必应）...', 'warn');
-                await autoSearchInject(query.slice(0, 300));
-                status(`已注入必应搜索结果 ✓（${query.slice(0, 30)}...）`, 'ok');
+                const results = await webSearch(text.slice(0, 300));
+                searchBlock = formatResults(results);
+                searched = true;
+                chatStatus(`🔍 已获取 ${results.length} 条搜索结果`, 'warn');
             } catch (e) {
-                status(`联网搜索失败：${e.message}（不影响本次对话）`, 'err');
+                chatStatus(`搜索失败(${e.message})，继续无搜索回答`, 'warn');
             }
         }
-    } else {
-        setExtPrompt('smart-hub-search', '');
-    }
 
-    // 记忆检索（高级开关）
-    if (S.memoryEnabled && S.embedModel) {
-        try {
-            const memory = await retrieveMemory(query.slice(0, 500));
-            setExtPrompt('smart-hub-memory', memory ? `[相关历史记录]\n${memory}` : '');
-        } catch (e) {
-            LOG('记忆检索失败：', e);
+        // 2) 组装上下文
+        const messages = [{ role: 'system', content: S.systemPrompt || '你是智能助手。' }];
+
+        if (S.includeTavernChat) {
+            const full = getFullChat().slice(-Math.max(1, Number(S.tavernChatLimit) || 20));
+            if (full.length) {
+                messages.push({
+                    role: 'system',
+                    content: `[酒馆当前会话完整聊天记录（含被隐藏的消息）]\n${full.map(m => `${m.name}: ${m.text}`).join('\n')}`,
+                });
+            }
         }
-    } else {
-        setExtPrompt('smart-hub-memory', '');
+
+        if (S.memoryEnabled && S.embedModel) {
+            try {
+                chatStatus('🧠 正在检索记忆...', 'warn');
+                const memory = await retrieveMemory(text);
+                if (memory) messages.push({ role: 'system', content: `[相关历史聊天记录检索]\n${memory}` });
+            } catch (e) { LOG('记忆检索失败：', e); }
+        }
+
+        // 独立对话历史
+        for (const m of S.chatHistory.slice(-40)) {
+            if (m.role !== 'user' && m.role !== 'assistant') continue;
+            messages.push({ role: m.role, content: m.content });
+        }
+
+        if (searchBlock) messages.push({ role: 'system', content: searchBlock });
+        messages.push({ role: 'user', content: text });
+
+        // 3) 请求独立 API
+        chatStatus('⏳ AI 思考中...', 'warn');
+        const data = await apiFetch(S.apiUrl, S.apiKey, '/v1/chat/completions', {
+            model: S.selectedModel,
+            messages,
+            temperature: 0.7,
+        });
+        const reply = data.choices?.[0]?.message?.content?.trim() || '(空回复)';
+
+        // 4) 展示 + 保存
+        $box.append(chatBubble('assistant', reply, searched));
+        S.chatHistory.push({ role: 'user', content: text, time: Date.now() });
+        S.chatHistory.push({ role: 'assistant', content: reply, searched, time: Date.now() });
+        if (S.chatHistory.length > 200) S.chatHistory = S.chatHistory.slice(-200);
+        saveSettingsDebounced();
+        $box.scrollTop($box[0].scrollHeight);
+        chatStatus(searched ? '✓ 本次回答已联网（必应搜索）' : '✓ 完成', 'ok');
+    } catch (e) {
+        chatStatus(`发送失败：${e.message}`, 'err');
+        $box.append(chatBubble('assistant', `⚠️ 请求失败：${e.message}`));
+        $box.scrollTop($box[0].scrollHeight);
+    } finally {
+        sending = false;
     }
 }
 
-// ==================== UI（只在魔法棒/扩展设置显示，单面板简洁版） ====================
+// ==================== 聊天记录查看抽屉（酒馆完整记录） ====================
+function openChatViewer() {
+    $('#sh-chat-viewer').remove();
+    const msgs = getFullChat();
+    const html = msgs.map(m => `
+        <div class="sh-msg ${m.role === 'user' ? 'sh-user' : 'sh-char'} ${m.hidden ? 'sh-hidden' : ''}">
+            <div class="sh-msg-meta">
+                <span>${$('<i>').text(m.name).html()}</span>
+                ${m.hidden ? '<span style="color:#f44336">🚫 已隐藏（此处可见）</span>' : ''}
+            </div>
+            <div class="sh-msg-body">${$('<i>').text(m.text).html()}</div>
+        </div>`).join('');
+    $('body').append($(`
+        <div id="sh-chat-viewer" class="sh-open">
+            <div class="sh-viewer-head">
+                <span>📜 酒馆完整聊天记录（${msgs.length} 条，含隐藏）</span>
+                <span class="sh-popup-close" title="关闭">✕</span>
+            </div>
+            <div class="sh-viewer-body">${html || '<p style="opacity:.6">当前会话没有消息</p>'}</div>
+        </div>`).on('click', '.sh-popup-close', function () { $(this).closest('#sh-chat-viewer').remove(); }));
+}
+
+// ==================== UI（魔法棒面板） ====================
 const t = (k) => `smart-hub-${k}`;
 
 function buildUI() {
@@ -231,22 +374,26 @@ function buildUI() {
     <div id="smart-hub-settings">
         <div class="inline-drawer">
             <div class="inline-drawer-toggle inline-drawer-header">
-                <b>🌐 Smart Hub 智能中枢</b>
+                <b>💬 Smart Hub 独立对话</b>
                 <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
             </div>
             <div class="inline-drawer-content" style="padding:8px 12px">
 
-                <!-- 主开关：联网搜索 -->
-                <div class="sh-main-toggle">
-                    <label class="checkbox_label sh-switch-row">
-                        <input id="${t('auto-search')}" type="checkbox">
-                        <span class="sh-switch-title">🔍 联网搜索（必应）</span>
-                    </label>
-                    <div class="sh-hint">开启后，当前对话每轮生成前会自动用必应搜索用户消息，并把结果注入给 AI。对话照常进行，无需其他操作。</div>
-                </div>
+                <!-- 打开对话按钮 -->
+                <button id="${t('open-chat')}" class="menu_button sh-open-btn">
+                    <i class="fa-solid fa-comments"></i>&nbsp; 打开独立对话窗口
+                </button>
+                <div class="sh-hint">独立于酒馆聊天的对话窗口，使用下方配置的 API 与模型。开启「对话时联网搜索」后，每轮提问前会自动用必应搜索并把结果给 AI 参考。</div>
+                <div id="sh-status" class="sh-status sh-ok">就绪 — 模型：${S.selectedModel || '未选择'}</div>
 
-                <!-- 状态 -->
-                <div id="sh-status" class="sh-status sh-ok">就绪 — 联网搜索 ${S.autoSearch ? '已开启 ✅' : '已关闭'}</div>
+                <!-- 对话选项 -->
+                <div class="sh-sec">
+                    <div class="sh-sec-title">对话选项</div>
+                    <div class="sh-row"><label class="checkbox_label"><input id="${t('auto-search')}" type="checkbox"><span>对话时联网搜索（必应）</span></label></div>
+                    <div class="sh-row"><label class="checkbox_label"><input id="${t('include-tavern')}" type="checkbox"><span>附加酒馆完整聊天记录（含隐藏，无视正则）</span></label></div>
+                    <div class="sh-row"><label>附加条数</label><input id="${t('tavern-limit')}" type="number" min="1" max="200" value="20"></div>
+                    <div class="sh-row"><label>系统提示词</label><input id="${t('system-prompt')}" type="text" placeholder="AI 的角色设定"></div>
+                </div>
 
                 <!-- 搜索接口 -->
                 <div class="sh-sec">
@@ -264,7 +411,7 @@ function buildUI() {
                     </div>
                 </div>
 
-                <!-- 高级选项（折叠） -->
+                <!-- 高级选项 -->
                 <div class="inline-drawer sh-adv">
                     <div class="inline-drawer-toggle inline-drawer-header">
                         <b>⚙️ 高级选项</b>
@@ -280,14 +427,13 @@ function buildUI() {
                                 <button id="${t('pull-models')}" class="menu_button menu_button_icon"><i class="fa-solid fa-rotate"></i> 拉取模型</button>
                                 <select id="${t('model-select')}"><option value="">-- 选择模型 --</option></select>
                             </div>
-                            <div class="sh-hint">用于本扩展直接调用 AI 的场景（如 AI 总结聊天记录）。</div>
                         </div>
 
                         <div class="sh-sec">
                             <div class="sh-sec-title">
-                                <label class="checkbox_label"><input id="${t('memory-enabled')}" type="checkbox"><span>🧠 向量记忆检索（读取完整聊天记录）</span></label>
+                                <label class="checkbox_label"><input id="${t('memory-enabled')}" type="checkbox"><span>🧠 向量记忆检索</span></label>
                             </div>
-                            <div class="sh-hint">用向量 + 重排序模型对完整聊天记录（含被隐藏的消息）做语义检索并注入。不受消息隐藏和正则影响。</div>
+                            <div class="sh-hint">用向量 + 重排序模型检索酒馆完整聊天记录（含被隐藏的消息）作为对话上下文。</div>
                             <div class="sh-row"><label>向量地址</label><input id="${t('embed-url')}" type="text" placeholder="留空复用主 API"></div>
                             <div class="sh-row"><label>向量密钥</label><input id="${t('embed-key')}" type="password" placeholder="留空复用主密钥"></div>
                             <div class="sh-row"><label>向量模型</label><input id="${t('embed-model')}" type="text" placeholder="text-embedding-3-small / bge-m3"></div>
@@ -304,11 +450,10 @@ function buildUI() {
                         </div>
 
                         <div class="sh-sec">
-                            <div class="sh-sec-title">📜 完整聊天记录</div>
+                            <div class="sh-sec-title">📜 酒馆完整聊天记录</div>
                             <div class="sh-btn-group">
                                 <button id="${t('view-chat')}" class="menu_button">查看</button>
                                 <button id="${t('export-txt')}" class="menu_button">导出 TXT</button>
-                                <button id="${t('ai-summarize')}" class="menu_button">AI 总结</button>
                             </div>
                             <div class="sh-hint">直接读取底层数据，无视隐藏与正则。被隐藏的消息以红色标记。</div>
                         </div>
@@ -328,6 +473,7 @@ function buildUI() {
 
     bindText(t('api-url'), 'apiUrl', v => v.replace(/\/+$/, ''));
     bindText(t('api-key'), 'apiKey');
+    bindText(t('system-prompt'), 'systemPrompt');
     bindText(t('embed-url'), 'embedApiUrl', v => v.replace(/\/+$/, ''));
     bindText(t('embed-key'), 'embedApiKey');
     bindText(t('embed-model'), 'embedModel');
@@ -336,20 +482,16 @@ function buildUI() {
     bindText(t('rerank-model'), 'rerankModel');
     bindText(t('search-url'), 'searchUrl');
     bindText(t('search-count'), 'searchCount', v => Number(v));
+    bindText(t('tavern-limit'), 'tavernChatLimit', v => Number(v));
     bindText(t('memory-topk'), 'memoryTopK', v => Number(v));
 
-    // 主开关
-    $(`#${t('auto-search')}`).on('change', function () {
-        S.autoSearch = $(this).prop('checked');
-        saveSettingsDebounced();
-        if (!S.autoSearch) setExtPrompt('smart-hub-search', '');
-        status(`联网搜索 ${S.autoSearch ? '已开启 ✅ 下一轮对话自动生效' : '已关闭'}`);
-    });
+    $(`#${t('open-chat')}`).on('click', openChatWindow);
+    $(`#${t('auto-search')}`).on('change', function () { S.autoSearch = $(this).prop('checked'); saveSettingsDebounced(); });
+    $(`#${t('include-tavern')}`).on('change', function () { S.includeTavernChat = $(this).prop('checked'); saveSettingsDebounced(); });
     $(`#${t('search-engine')}`).on('change', function () { S.searchEngine = $(this).val(); saveSettingsDebounced(); });
     $(`#${t('memory-enabled')}`).on('change', function () { S.memoryEnabled = $(this).prop('checked'); saveSettingsDebounced(); });
     $(`#${t('memory-rerank')}`).on('change', function () { S.memoryRerank = $(this).prop('checked'); saveSettingsDebounced(); });
 
-    // 拉取模型
     $(`#${t('pull-models')}`).on('click', async () => {
         try {
             status('正在拉取模型列表...', 'warn');
@@ -362,9 +504,11 @@ function buildUI() {
             status(`拉取成功，共 ${models.length} 个模型`);
         } catch (e) { status(e.message, 'err'); }
     });
-    $(`#${t('model-select')}`).on('change', function () { S.selectedModel = $(this).val(); saveSettingsDebounced(); });
+    $(`#${t('model-select')}`).on('change', function () {
+        S.selectedModel = $(this).val(); saveSettingsDebounced();
+        status(`已选择模型：${S.selectedModel}`);
+    });
 
-    // 重建索引
     $(`#${t('build-index')}`).on('click', async () => {
         try {
             status('正在重建向量索引...', 'warn');
@@ -375,20 +519,22 @@ function buildUI() {
         } catch (e) { status(e.message, 'err'); }
     });
 
-    // 聊天记录
     $(`#${t('view-chat')}`).on('click', openChatViewer);
     $(`#${t('export-txt')}`).on('click', () => {
-        const blob = new Blob([chatToTranscript(getFullChat())], { type: 'text/plain;charset=utf-8' });
+        const blob = new Blob([getFullChat().map(m => `${m.name}${m.hidden ? ' [隐藏]' : ''}: ${m.text}`).join('\n\n')],
+            { type: 'text/plain;charset=utf-8' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = `${getContext().chatId || 'chat'}-完整记录.txt`;
         a.click();
         status('已导出 TXT');
     });
-    $(`#${t('ai-summarize')}`).on('click', aiSummarizeChat);
 
     // ---- 回填 ----
     $(`#${t('auto-search')}`).prop('checked', S.autoSearch);
+    $(`#${t('include-tavern')}`).prop('checked', S.includeTavernChat);
+    $(`#${t('tavern-limit')}`).val(S.tavernChatLimit);
+    $(`#${t('system-prompt')}`).val(S.systemPrompt);
     $(`#${t('search-url')}`).val(S.searchUrl);
     $(`#${t('search-engine')}`).val(S.searchEngine);
     $(`#${t('search-count')}`).val(S.searchCount);
@@ -412,52 +558,8 @@ function buildUI() {
     }
 }
 
-// ==================== 聊天记录抽屉 ====================
-function openChatViewer() {
-    $('#sh-chat-viewer').remove();
-    const msgs = getFullChat();
-    const html = msgs.map(m => `
-        <div class="sh-msg ${m.role === 'user' ? 'sh-user' : 'sh-char'} ${m.hidden ? 'sh-hidden' : ''}">
-            <div class="sh-msg-meta">
-                <span>${$('<i>').text(m.name).html()}</span>
-                ${m.hidden ? '<span style="color:#f44336">🚫 已隐藏（此处可见）</span>' : ''}
-            </div>
-            <div class="sh-msg-body">${$('<i>').text(m.text).html()}</div>
-        </div>`).join('');
-    $('body').append($(`
-        <div id="sh-chat-viewer" class="sh-open">
-            <div class="sh-viewer-head">
-                <span>📜 完整聊天记录（${msgs.length} 条，含隐藏）</span>
-                <span class="sh-popup-close" title="关闭">✕</span>
-            </div>
-            <div class="sh-viewer-body">${html || '<p style="opacity:.6">当前会话没有消息</p>'}</div>
-        </div>`).on('click', '.sh-popup-close', function () { $(this).closest('#sh-chat-viewer').remove(); }));
-}
-
-// ==================== AI 总结 ====================
-async function aiSummarizeChat() {
-    if (!S.apiUrl || !S.selectedModel) return status('请先在高级选项中配置 API 并选择模型', 'err');
-    status('AI 正在读取完整聊天记录并总结...', 'warn');
-    try {
-        const data = await apiFetch(S.apiUrl, S.apiKey, '/v1/chat/completions', {
-            model: S.selectedModel,
-            messages: [
-                { role: 'system', content: '你是聊天记录分析助手。请完整阅读全部聊天记录（包含被隐藏的消息），输出结构化总结：主要事件、人物关系、重要伏笔与细节。' },
-                { role: 'user', content: `完整聊天记录：\n\n${chatToTranscript(getFullChat())}` },
-            ],
-        });
-        const summary = data.choices?.[0]?.message?.content || '(空回复)';
-        await navigator.clipboard.writeText(summary).catch(() => {});
-        status(`总结完成（已复制）：\n${summary.slice(0, 500)}`);
-    } catch (e) { status(`总结失败：${e.message}`, 'err'); }
-}
-
 // ==================== 初始化 ====================
 jQuery(async () => {
     buildUI();
-    const ctx = getContext();
-    if (ctx.eventSource) {
-        ctx.eventSource.on(ctx.event_types.GENERATION_STARTED, onGenerationStarted);
-    }
-    LOG('v1.1.0 加载完成 ✓');
+    LOG('v1.2.0 加载完成 ✓');
 });
