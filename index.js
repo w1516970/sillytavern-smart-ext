@@ -428,29 +428,76 @@ function openChatViewer() {
 }
 
 // ==================== 魔法棒快捷菜单入口 ====================
-function addWandMenuButton() {
-    const $menu = $('#extensionsMenu');
-    if (!$menu.length) {
-        LOG('未找到魔法棒菜单 #extensionsMenu，仅保留扩展设置入口');
-        return;
-    }
-    $('#sh-menu-item').remove();
+// 兼容多种 SillyTavern 版本：优先官方 API，其次直接注入 #extensionsMenu，
+// 并在每次菜单打开时监测补注入，确保条目一定出现。
+function makeMenuItem() {
     const $item = $(`
-        <div id="sh-menu-item" class="list-item">
-            <a class="list-group-item flex-container flexGap5 interactable" title="Smart Hub 独立对话（点击打开/关闭）">
-                <i class="fa-solid fa-comments sh-menu-icon"></i><span>Smart Hub 对话</span>
-            </a>
+        <div id="sh-menu-item" class="list-group-item flex-container flexGap5 interactable" title="Smart Hub 独立对话">
+            <i class="fa-solid fa-comments sh-menu-icon"></i><span>Smart Hub 对话</span>
         </div>`);
-    $item.on('click', () => {
-        // 关闭魔法棒下拉菜单（模拟点击外部区域）
-        $('#sh-menu-item').closest('.extensions_menu').hide().parent().removeClass('openMenu');
+    $item.on('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // 关闭魔法棒下拉
+        $('#extensionsMenu').closest('.options-content').hide();
+        $('.options-content').hide();
         const $win = $('#sh-chat-window');
-        if ($win.length) $win.remove();   // 已开则关闭（toggle 效果）
+        if ($win.length) $win.remove();
         else openChatWindow();
     });
-    $menu.append($item);
-    LOG('魔法棒菜单入口已添加 ✓');
+    return $item;
 }
+
+function injectMenuItem() {
+    const $menu = $('#extensionsMenu');
+    if (!$menu.length) return false;
+    if ($('#sh-menu-item').length) return true;
+    $menu.append(makeMenuItem());
+    LOG('魔法棒菜单入口已注入 ✓');
+    return true;
+}
+
+function addWandMenuButton() {
+    // 1) 官方 API（新版酒馆）
+    try {
+        const ctx = getContext();
+        if (ctx?.registerExtensionMenu) {
+            ctx.registerExtensionMenu({
+                id: 'smart-hub-chat',
+                label: 'Smart Hub 对话',
+                icon: 'fa-solid fa-comments',
+                onClick: () => {
+                    const $win = $('#sh-chat-window');
+                    if ($win.length) $win.remove();
+                    else openChatWindow();
+                },
+            });
+            LOG('通过官方 registerExtensionMenu 注册成功');
+            return;
+        }
+    } catch (e) { LOG('官方菜单 API 不可用：', e.message); }
+
+    // 2) 直接注入 + 监听补注入
+    const ok = injectMenuItem();
+    if (!ok) {
+        // 菜单元素可能尚未渲染，轮询等待（最多 20 秒）
+        let tries = 0;
+        const timer = setInterval(() => {
+            if (injectMenuItem() || ++tries > 40) clearInterval(timer);
+        }, 500);
+    }
+    // 3) 每次点击魔法棒后补注入（防止酒馆重建菜单）
+    $(document).on('click', '#extensionsMenuButton, .extensions_menu_toggle, #extensions_menu_button', () => {
+        setTimeout(injectMenuItem, 50);
+        setTimeout(injectMenuItem, 300);
+    });
+    // 4) MutationObserver 兜底
+    const obs = new MutationObserver(() => {
+        if ($('#extensionsMenu').length && !$('#sh-menu-item').length) injectMenuItem();
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+}
+
 
 // ==================== UI（魔法棒面板） ====================
 const t = (k) => `smart-hub-${k}`;
@@ -650,5 +697,5 @@ function buildUI() {
 jQuery(async () => {
     buildUI();
     addWandMenuButton();
-    LOG('v1.3.0 加载完成 ✓');
+    LOG("v1.3.1 加载完成 ✓");
 });
