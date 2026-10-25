@@ -372,3 +372,17 @@
     min-width: 100px;
     font-size: 12.5px;
 }
+
+/* v1.3.1 菜单项对齐 */
+#extensionsMenu #sh-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+#extensionsMenu #sh-menu-item:hover { background: var(--black30a); }
+#extensionsMenu #sh-menu-item .sh-menu-icon { color: var(--accent, #7b61ff); }
