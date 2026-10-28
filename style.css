@@ -1,388 +1,555 @@
-/* Smart Hub - 智能中枢 v1.1.0（简洁单面板） */
+/* ============================================================
+   Smart Hub - 智能中枢 v1.4.0
+   独立视觉体系：不使用酒馆主题变量，不受任何美化主题影响
+   ============================================================ */
+
+/* ---------- 设计令牌 ---------- */
+#smart-hub-settings, #sh-chat-window, #sh-chat-viewer {
+    --sh-bg: #12121d;
+    --sh-bg-2: #1a1a2b;
+    --sh-bg-3: #22223a;
+    --sh-card: rgba(255, 255, 255, 0.045);
+    --sh-card-hover: rgba(255, 255, 255, 0.08);
+    --sh-border: rgba(255, 255, 255, 0.09);
+    --sh-text: #e8e6f0;
+    --sh-text-dim: #9a97ad;
+    --sh-accent: #7c6cff;
+    --sh-accent-2: #a78bfa;
+    --sh-green: #4ade80;
+    --sh-red: #f87171;
+    --sh-orange: #fbbf24;
+    --sh-grad: linear-gradient(135deg, #6d5df6 0%, #9d6bf5 55%, #c06cf0 100%);
+    --sh-radius: 14px;
+    --sh-font: "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+}
+
+/* ---------- 滚动条 ---------- */
+#sh-chat-window ::-webkit-scrollbar,
+#sh-chat-viewer ::-webkit-scrollbar,
+#sh-chat-window .sh-chat-config::-webkit-scrollbar { width: 6px; }
+#sh-chat-window ::-webkit-scrollbar-thumb,
+#sh-chat-viewer ::-webkit-scrollbar-thumb { background: rgba(124, 108, 255, 0.35); border-radius: 3px; }
+#sh-chat-window ::-webkit-scrollbar-track,
+#sh-chat-viewer ::-webkit-scrollbar-track { background: transparent; }
+
+/* ============================================================
+   扩展设置面板（魔法棒 → 扩展设置）
+   ============================================================ */
+#smart-hub-settings .inline-drawer-content {
+    font-family: var(--sh-font) !important;
+    color: var(--sh-text) !important;
+}
 
 #smart-hub-settings .sh-hint {
-    font-size: 12px;
-    opacity: 0.65;
-    margin: 4px 0 8px;
-    line-height: 1.5;
+    font-size: 12px !important;
+    color: var(--sh-text-dim) !important;
+    margin: 5px 0 9px !important;
+    line-height: 1.6 !important;
+}
+
+#smart-hub-settings .sh-hint code {
+    background: var(--sh-bg-3) !important;
+    color: var(--sh-accent-2) !important;
+    padding: 1px 6px !important;
+    border-radius: 5px !important;
+    font-size: 11.5px !important;
 }
 
 #smart-hub-settings .sh-sec {
-    margin: 10px 0;
-    padding: 8px;
-    border: 1px solid var(--grey30a);
-    border-radius: 8px;
-    background: var(--black30a);
+    margin: 10px 0 !important;
+    padding: 11px 12px !important;
+    border: 1px solid var(--sh-border) !important;
+    border-radius: var(--sh-radius) !important;
+    background: var(--sh-card) !important;
 }
 
 #smart-hub-settings .sh-sec-title {
-    font-weight: 600;
-    font-size: 13px;
-    margin-bottom: 6px;
-    padding-left: 8px;
-    border-left: 3px solid var(--accent, #7b61ff);
+    font-weight: 700 !important;
+    font-size: 13px !important;
+    margin-bottom: 8px !important;
+    padding-left: 9px !important;
+    border: none !important;
+    border-left: 3px solid var(--sh-accent) !important;
+    color: var(--sh-text) !important;
+    letter-spacing: 0.3px;
 }
 
 #smart-hub-settings .sh-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 6px;
-    flex-wrap: wrap;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    margin-bottom: 7px !important;
+    flex-wrap: wrap !important;
 }
 
-#smart-hub-settings .sh-row label {
-    min-width: 80px;
-    font-size: 13px;
-    opacity: 0.9;
+#smart-hub-settings .sh-row > label,
+#smart-hub-settings .sh-row .checkbox_label {
+    font-size: 12.5px !important;
+    color: var(--sh-text-dim) !important;
+    min-width: 78px;
 }
+
+#smart-hub-settings .sh-row input[type="checkbox"] { accent-color: var(--sh-accent); }
 
 #smart-hub-settings .sh-row input[type="text"],
 #smart-hub-settings .sh-row input[type="password"],
 #smart-hub-settings .sh-row input[type="number"],
 #smart-hub-settings .sh-row select {
-    flex: 1;
-    min-width: 120px;
+    flex: 1 !important;
+    min-width: 110px !important;
+    background: var(--sh-bg-2) !important;
+    color: var(--sh-text) !important;
+    border: 1px solid var(--sh-border) !important;
+    border-radius: 9px !important;
+    padding: 7px 11px !important;
+    font-size: 12.5px !important;
+    transition: border-color 0.2s, box-shadow 0.2s !important;
+    outline: none !important;
+    box-shadow: none !important;
 }
 
-/* 主开关高亮 */
-#smart-hub-settings .sh-main-toggle {
-    margin-bottom: 10px;
-    padding: 10px;
-    border-radius: 8px;
-    border: 1px solid var(--accent, #7b61ff);
-    background: color-mix(in srgb, var(--accent, #7b61ff) 8%, transparent);
+#smart-hub-settings .sh-row input:focus,
+#smart-hub-settings .sh-row select:focus {
+    border-color: var(--sh-accent) !important;
+    box-shadow: 0 0 0 3px rgba(124, 108, 255, 0.18) !important;
 }
 
-#smart-hub-settings .sh-switch-title {
-    font-weight: 700;
-    font-size: 14px;
-}
-
-#smart-hub-settings .sh-btn-group {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-    margin-top: 6px;
-}
-
-#smart-hub-settings .sh-status {
-    margin: 8px 0;
-    padding: 8px;
-    border-radius: 6px;
-    font-size: 12px;
-    max-height: 150px;
-    overflow-y: auto;
-    background: var(--black50a);
-    white-space: pre-wrap;
-    word-break: break-all;
-}
-
-#smart-hub-settings .sh-status.sh-ok { border-left: 3px solid #4caf50; }
-#smart-hub-settings .sh-status.sh-err { border-left: 3px solid #f44336; }
-#smart-hub-settings .sh-status.sh-warn { border-left: 3px solid #ff9800; }
-
-/* 高级选项抽屉内边距 */
-#smart-hub-settings .sh-adv { margin-top: 10px; }
-
-/* 聊天记录抽屉 */
-#sh-chat-viewer {
-    position: fixed;
-    top: 0;
-    right: -520px;
-    width: 500px;
-    max-width: 95vw;
-    height: 100vh;
-    z-index: 9998;
-    background: var(--SmartThemeBodyColor, #16161f);
-    border-left: 2px solid var(--accent, #7b61ff);
-    box-shadow: -6px 0 24px rgba(0, 0, 0, 0.5);
-    transition: right 0.25s ease;
-    display: flex;
-    flex-direction: column;
-}
-
-#sh-chat-viewer.sh-open { right: 0; }
-
-#sh-chat-viewer .sh-viewer-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px;
-    border-bottom: 1px solid var(--grey30a);
-    font-weight: 600;
-}
-
-#sh-chat-viewer .sh-viewer-body {
-    flex: 1;
-    overflow-y: auto;
-    padding: 10px;
-}
-
-#sh-chat-viewer .sh-msg {
-    margin-bottom: 8px;
-    padding: 8px 10px;
-    border-radius: 8px;
-    background: var(--black30a);
-    border: 1px solid var(--grey30a);
-    font-size: 13px;
-    line-height: 1.55;
-}
-
-#sh-chat-viewer .sh-msg.sh-user { border-left: 3px solid #4caf50; }
-#sh-chat-viewer .sh-msg.sh-char { border-left: 3px solid #7b61ff; }
-#sh-chat-viewer .sh-msg.sh-hidden { border-left: 3px solid #f44336; opacity: 0.9; }
-
-#sh-chat-viewer .sh-msg .sh-msg-meta {
-    font-size: 11px;
-    opacity: 0.6;
-    margin-bottom: 4px;
-    display: flex;
-    gap: 8px;
-}
-
-#sh-chat-viewer .sh-msg .sh-msg-body { white-space: pre-wrap; word-break: break-word; }
-#sh-chat-viewer .sh-msg.sh-hidden .sh-msg-body { color: #ffb4a9; }
-
-#sh-chat-viewer .sh-popup-close,
-.sh-popup-close {
-    cursor: pointer;
-    padding: 2px 10px;
-    border-radius: 6px;
-    opacity: 0.7;
-}
-
-#sh-chat-viewer .sh-popup-close:hover,
-.sh-popup-close:hover { opacity: 1; background: var(--black30a); }
-
-/* ===== v1.2.0 独立对话窗口 ===== */
-
+/* 主按钮：打开独立对话窗口 */
 #smart-hub-settings .sh-open-btn {
-    width: 100%;
-    padding: 10px;
-    font-size: 14px;
-    font-weight: 600;
+    width: 100% !important;
+    padding: 12px !important;
+    margin: 4px 0 8px !important;
+    font-size: 14.5px !important;
+    font-weight: 700 !important;
+    letter-spacing: 1px !important;
+    color: #fff !important;
+    background: var(--sh-grad) !important;
+    border: none !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 18px rgba(124, 108, 255, 0.35) !important;
+    text-shadow: none !important;
+    transition: transform 0.15s, box-shadow 0.15s !important;
 }
 
-/* 对话窗口 */
+#smart-hub-settings .sh-open-btn:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 6px 24px rgba(124, 108, 255, 0.5) !important;
+    filter: brightness(1.08) !important;
+}
+
+/* 普通按钮 */
+#smart-hub-settings .menu_button,
+#sh-chat-window .menu_button {
+    background: var(--sh-bg-3) !important;
+    color: var(--sh-text) !important;
+    border: 1px solid var(--sh-border) !important;
+    border-radius: 9px !important;
+    padding: 7px 13px !important;
+    font-size: 12.5px !important;
+    transition: background 0.2s, border-color 0.2s !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+}
+
+#smart-hub-settings .menu_button:hover,
+#sh-chat-window .menu_button:hover {
+    background: rgba(124, 108, 255, 0.22) !important;
+    border-color: var(--sh-accent) !important;
+}
+
+/* 状态条 */
+#smart-hub-settings .sh-status {
+    margin: 9px 0 !important;
+    padding: 9px 11px !important;
+    border-radius: 10px !important;
+    font-size: 12px !important;
+    max-height: 150px !important;
+    overflow-y: auto !important;
+    background: var(--sh-bg-2) !important;
+    color: var(--sh-text) !important;
+    border: 1px solid var(--sh-border) !important;
+    white-space: pre-wrap !important;
+    word-break: break-all !important;
+    font-family: var(--sh-font) !important;
+}
+
+#smart-hub-settings .sh-status.sh-ok   { border-left: 3px solid var(--sh-green) !important; }
+#smart-hub-settings .sh-status.sh-err  { border-left: 3px solid var(--sh-red) !important; }
+#smart-hub-settings .sh-status.sh-warn { border-left: 3px solid var(--sh-orange) !important; }
+
+/* ============================================================
+   独立对话窗口
+   ============================================================ */
 #sh-chat-window {
-    position: fixed;
-    top: 0;
-    right: -560px;
-    width: 540px;
-    max-width: 96vw;
-    height: 100vh;
-    z-index: 9999;
-    background: var(--SmartThemeBodyColor, #16161f);
-    border-left: 2px solid var(--accent, #7b61ff);
-    box-shadow: -6px 0 24px rgba(0, 0, 0, 0.5);
-    transition: right 0.25s ease;
-    display: flex;
-    flex-direction: column;
+    position: fixed !important;
+    top: 0 !important;
+    right: -580px !important;
+    width: 560px !important;
+    max-width: 96vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    z-index: 99990 !important;
+    background: var(--sh-bg) !important;
+    border: none !important;
+    border-left: 1px solid var(--sh-border) !important;
+    box-shadow: -12px 0 48px rgba(0, 0, 0, 0.6) !important;
+    transition: right 0.28s cubic-bezier(0.22, 1, 0.36, 1) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    font-family: var(--sh-font) !important;
+    color: var(--sh-text) !important;
 }
 
-#sh-chat-window.sh-open { right: 0; }
+#sh-chat-window.sh-open { right: 0 !important; }
 
+/* 顶栏：渐变 */
 #sh-chat-window .sh-chat-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px;
-    border-bottom: 1px solid var(--grey30a);
-    font-weight: 600;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    padding: 13px 15px !important;
+    background: var(--sh-grad) !important;
+    border: none !important;
+    box-shadow: 0 2px 14px rgba(124, 108, 255, 0.35);
+    flex-shrink: 0 !important;
 }
 
 #sh-chat-window .sh-chat-head-title {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 14px;
+    display: flex !important;
+    align-items: center !important;
+    gap: 9px !important;
+    font-size: 14.5px !important;
+    font-weight: 700 !important;
+    color: #fff !important;
+    letter-spacing: 0.5px;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.25);
 }
 
 #sh-chat-window .sh-badge {
-    font-size: 11px;
-    font-weight: 500;
-    padding: 2px 8px;
-    border-radius: 10px;
-    background: rgba(76, 175, 80, 0.25);
-    color: #8de08d;
+    font-size: 10.5px !important;
+    font-weight: 600 !important;
+    padding: 3px 9px !important;
+    border-radius: 20px !important;
+    background: rgba(255, 255, 255, 0.22) !important;
+    color: #d9fbe3 !important;
+    backdrop-filter: blur(4px);
 }
 
 #sh-chat-window .sh-badge-off {
-    background: rgba(158, 158, 158, 0.25);
-    color: #bbb;
+    background: rgba(255, 255, 255, 0.12) !important;
+    color: rgba(255, 255, 255, 0.65) !important;
 }
 
 #sh-chat-window .sh-chat-head-btns {
-    display: flex;
-    gap: 10px;
-    font-size: 16px;
+    display: flex !important;
+    gap: 6px !important;
 }
 
+#sh-chat-window .sh-chat-gear,
 #sh-chat-window .sh-chat-clear,
 #sh-chat-window .sh-chat-close {
-    cursor: pointer;
-    opacity: 0.7;
-    padding: 2px 6px;
-    border-radius: 6px;
+    cursor: pointer !important;
+    opacity: 0.85 !important;
+    padding: 5px 9px !important;
+    border-radius: 8px !important;
+    font-size: 15px !important;
+    color: #fff !important;
+    transition: background 0.15s, opacity 0.15s !important;
 }
 
+#sh-chat-window .sh-chat-gear:hover,
 #sh-chat-window .sh-chat-clear:hover,
-#sh-chat-window .sh-chat-close:hover { opacity: 1; background: var(--black30a); }
+#sh-chat-window .sh-chat-close:hover {
+    opacity: 1 !important;
+    background: rgba(255, 255, 255, 0.18) !important;
+}
 
+/* 消息区 */
 #sh-chat-window .sh-chat-body {
-    flex: 1;
-    overflow-y: auto;
-    padding: 12px;
+    flex: 1 !important;
+    overflow-y: auto !important;
+    padding: 14px !important;
+    background:
+        radial-gradient(ellipse 90% 40% at 50% 0%, rgba(124, 108, 255, 0.06), transparent),
+        var(--sh-bg) !important;
 }
 
 #sh-chat-window #sh-chat-messages {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
 }
 
 #sh-chat-window .sh-chat-empty {
-    text-align: center;
-    opacity: 0.6;
-    padding: 40px 10px;
-    font-size: 13px;
-    line-height: 1.8;
+    text-align: center !important;
+    color: var(--sh-text-dim) !important;
+    padding: 46px 14px !important;
+    font-size: 13px !important;
+    line-height: 2 !important;
 }
+
+#sh-chat-window .sh-chat-empty b { color: var(--sh-accent-2) !important; }
 
 #sh-chat-window .sh-chat-status {
-    font-size: 12px;
-    padding: 4px 2px 0;
-    min-height: 18px;
-    opacity: 0.9;
+    font-size: 12px !important;
+    padding: 6px 4px 0 !important;
+    min-height: 20px !important;
+    text-align: center;
 }
 
-#sh-chat-window .sh-chat-status.sh-ok { color: #8de08d; }
-#sh-chat-window .sh-chat-status.sh-err { color: #ff8a80; }
-#sh-chat-window .sh-chat-status.sh-warn { color: #ffcc80; }
+#sh-chat-window .sh-chat-status.sh-ok   { color: var(--sh-green) !important; }
+#sh-chat-window .sh-chat-status.sh-err  { color: var(--sh-red) !important; }
+#sh-chat-window .sh-chat-status.sh-warn { color: var(--sh-orange) !important; }
 
 /* 气泡 */
 #sh-chat-window .sh-bubble {
-    max-width: 88%;
-    padding: 8px 12px;
-    border-radius: 12px;
-    font-size: 13.5px;
-    line-height: 1.6;
-    word-break: break-word;
+    max-width: 86% !important;
+    padding: 10px 14px !important;
+    font-size: 13.5px !important;
+    line-height: 1.65 !important;
+    word-break: break-word !important;
+    animation: sh-bubble-in 0.22s ease;
+}
+
+@keyframes sh-bubble-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 #sh-chat-window .sh-bubble .sh-bubble-tag {
-    font-size: 10.5px;
-    opacity: 0.55;
-    margin-bottom: 3px;
+    font-size: 10.5px !important;
+    opacity: 0.6 !important;
+    margin-bottom: 4px !important;
+    letter-spacing: 0.5px;
 }
 
-#sh-chat-window .sh-bubble .sh-bubble-body { white-space: pre-wrap; }
+#sh-chat-window .sh-bubble .sh-bubble-body { white-space: pre-wrap !important; }
 
 #sh-chat-window .sh-user {
-    align-self: flex-end;
-    background: var(--accent, #7b61ff);
-    color: #fff;
-    border-bottom-right-radius: 3px;
+    align-self: flex-end !important;
+    background: var(--sh-grad) !important;
+    color: #fff !important;
+    border-radius: 16px 16px 4px 16px !important;
+    box-shadow: 0 3px 14px rgba(124, 108, 255, 0.3) !important;
 }
 
 #sh-chat-window .sh-ai {
-    align-self: flex-start;
-    background: var(--black30a);
-    border: 1px solid var(--grey30a);
-    border-bottom-left-radius: 3px;
+    align-self: flex-start !important;
+    background: var(--sh-bg-2) !important;
+    color: var(--sh-text) !important;
+    border: 1px solid var(--sh-border) !important;
+    border-radius: 16px 16px 16px 4px !important;
 }
 
 /* 输入栏 */
 #sh-chat-window .sh-chat-input-bar {
-    display: flex;
-    gap: 8px;
-    padding: 10px;
-    border-top: 1px solid var(--grey30a);
-    align-items: flex-end;
+    display: flex !important;
+    gap: 9px !important;
+    padding: 11px 13px !important;
+    border-top: 1px solid var(--sh-border) !important;
+    background: var(--sh-bg-2) !important;
+    align-items: flex-end !important;
+    flex-shrink: 0 !important;
 }
 
 #sh-chat-window #sh-chat-input {
-    flex: 1;
-    resize: none;
-    max-height: 120px;
-    border-radius: 10px;
-    padding: 8px 12px;
-    font-size: 13.5px;
+    flex: 1 !important;
+    resize: none !important;
+    max-height: 120px !important;
+    border-radius: 12px !important;
+    padding: 10px 14px !important;
+    font-size: 13.5px !important;
+    background: var(--sh-bg-3) !important;
+    color: var(--sh-text) !important;
+    border: 1px solid var(--sh-border) !important;
+    outline: none !important;
+    box-shadow: none !important;
+    font-family: var(--sh-font) !important;
+    transition: border-color 0.2s, box-shadow 0.2s !important;
+}
+
+#sh-chat-window #sh-chat-input:focus {
+    border-color: var(--sh-accent) !important;
+    box-shadow: 0 0 0 3px rgba(124, 108, 255, 0.18) !important;
 }
 
 #sh-chat-window #sh-chat-send {
-    padding: 8px 14px;
-    border-radius: 10px;
+    padding: 10px 16px !important;
+    border-radius: 12px !important;
+    background: var(--sh-grad) !important;
+    color: #fff !important;
+    border: none !important;
+    box-shadow: 0 3px 12px rgba(124, 108, 255, 0.35) !important;
+    transition: transform 0.15s !important;
 }
 
-/* ===== v1.3.0 魔法棒菜单入口 + 窗口内配置 ===== */
+#sh-chat-window #sh-chat-send:hover { transform: scale(1.06) !important; }
 
-#sh-menu-item {
-    cursor: pointer;
-}
-
-#sh-menu-item .sh-menu-icon {
-    color: var(--accent, #7b61ff);
-}
-
-#sh-menu-item:hover {
-    background: var(--black30a);
-}
-
+/* 窗口内配置区 */
 #sh-chat-window .sh-chat-config {
-    border-bottom: 1px solid var(--grey30a);
-    padding: 8px 10px;
-    max-height: 45vh;
-    overflow-y: auto;
+    border-bottom: 1px solid var(--sh-border) !important;
+    padding: 10px 12px !important;
+    max-height: 46vh !important;
+    overflow-y: auto !important;
+    background: var(--sh-bg-2) !important;
 }
 
 #sh-chat-window .sh-chat-config .sh-sec {
-    margin: 6px 0;
-    padding: 6px;
-    border: 1px solid var(--grey30a);
-    border-radius: 8px;
+    margin: 7px 0 !important;
+    padding: 9px 10px !important;
+    border: 1px solid var(--sh-border) !important;
+    border-radius: 11px !important;
+    background: var(--sh-card) !important;
 }
 
 #sh-chat-window .sh-chat-config .sh-sec-title {
-    font-weight: 600;
-    font-size: 12.5px;
-    margin-bottom: 4px;
-    padding-left: 6px;
-    border-left: 3px solid var(--accent, #7b61ff);
+    font-weight: 700 !important;
+    font-size: 12.5px !important;
+    margin-bottom: 6px !important;
+    padding-left: 8px !important;
+    border: none !important;
+    border-left: 3px solid var(--sh-accent) !important;
+    color: var(--sh-text) !important;
 }
 
 #sh-chat-window .sh-chat-config .sh-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 5px;
-    flex-wrap: wrap;
+    display: flex !important;
+    align-items: center !important;
+    gap: 7px !important;
+    margin-bottom: 6px !important;
+    flex-wrap: wrap !important;
 }
 
-#sh-chat-window .sh-chat-config .sh-row label {
-    min-width: 70px;
-    font-size: 12.5px;
-    opacity: 0.9;
+#sh-chat-window .sh-chat-config .sh-row > label,
+#sh-chat-window .sh-chat-config .sh-row .checkbox_label {
+    min-width: 70px !important;
+    font-size: 12px !important;
+    color: var(--sh-text-dim) !important;
 }
 
-#sh-chat-window .sh-chat-config .sh-row input,
+#sh-chat-window .sh-chat-config .sh-row input[type="text"],
+#sh-chat-window .sh-chat-config .sh-row input[type="password"],
 #sh-chat-window .sh-chat-config .sh-row select {
-    flex: 1;
-    min-width: 100px;
-    font-size: 12.5px;
+    flex: 1 !important;
+    min-width: 100px !important;
+    font-size: 12px !important;
+    background: var(--sh-bg-3) !important;
+    color: var(--sh-text) !important;
+    border: 1px solid var(--sh-border) !important;
+    border-radius: 8px !important;
+    padding: 6px 10px !important;
+    outline: none !important;
+    box-shadow: none !important;
 }
 
-/* v1.3.1 菜单项对齐 */
+#sh-chat-window .sh-chat-config input[type="checkbox"] { accent-color: var(--sh-accent); }
+
+#sh-chat-window .sh-chat-config .sh-hint {
+    font-size: 11.5px !important;
+    color: var(--sh-text-dim) !important;
+    text-align: center !important;
+    margin: 6px 0 2px !important;
+}
+
+/* ============================================================
+   魔法棒菜单入口
+   ============================================================ */
 #extensionsMenu #sh-menu-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
-    cursor: pointer;
-    font-size: 14px;
-    white-space: nowrap;
+    display: flex !important;
+    align-items: center !important;
+    gap: 9px !important;
+    padding: 7px 14px !important;
+    cursor: pointer !important;
+    font-size: 14px !important;
+    white-space: nowrap !important;
+    color: var(--sh-text, #e8e6f0) !important;
+    transition: background 0.15s !important;
 }
 
-#extensionsMenu #sh-menu-item:hover { background: var(--black30a); }
-#extensionsMenu #sh-menu-item .sh-menu-icon { color: var(--accent, #7b61ff); }
+#extensionsMenu #sh-menu-item:hover { background: rgba(124, 108, 255, 0.16) !important; }
+#extensionsMenu #sh-menu-item .sh-menu-icon {
+    color: var(--sh-accent, #7c6cff) !important;
+    filter: drop-shadow(0 0 4px rgba(124, 108, 255, 0.5));
+}
+
+/* ============================================================
+   酒馆完整聊天记录查看抽屉
+   ============================================================ */
+#sh-chat-viewer {
+    position: fixed !important;
+    top: 0 !important;
+    right: -560px !important;
+    width: 540px !important;
+    max-width: 96vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    z-index: 99980 !important;
+    background: var(--sh-bg) !important;
+    border: none !important;
+    border-left: 1px solid var(--sh-border) !important;
+    box-shadow: -12px 0 48px rgba(0, 0, 0, 0.6) !important;
+    transition: right 0.28s cubic-bezier(0.22, 1, 0.36, 1) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    font-family: var(--sh-font) !important;
+    color: var(--sh-text) !important;
+}
+
+#sh-chat-viewer.sh-open { right: 0 !important; }
+
+#sh-chat-viewer .sh-viewer-head {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    padding: 13px 15px !important;
+    background: var(--sh-grad) !important;
+    border: none !important;
+    font-weight: 700 !important;
+    font-size: 14px !important;
+    color: #fff !important;
+    flex-shrink: 0 !important;
+}
+
+#sh-chat-viewer .sh-viewer-body {
+    flex: 1 !important;
+    overflow-y: auto !important;
+    padding: 12px !important;
+}
+
+#sh-chat-viewer .sh-msg {
+    margin-bottom: 9px !important;
+    padding: 10px 12px !important;
+    border-radius: 12px !important;
+    background: var(--sh-card) !important;
+    border: 1px solid var(--sh-border) !important;
+    font-size: 13px !important;
+    line-height: 1.6 !important;
+}
+
+#sh-chat-viewer .sh-msg.sh-user  { border-left: 3px solid var(--sh-green) !important; }
+#sh-chat-viewer .sh-msg.sh-char  { border-left: 3px solid var(--sh-accent) !important; }
+#sh-chat-viewer .sh-msg.sh-hidden { border-left: 3px solid var(--sh-red) !important; background: rgba(248, 113, 113, 0.06) !important; }
+
+#sh-chat-viewer .sh-msg .sh-msg-meta {
+    font-size: 11px !important;
+    color: var(--sh-text-dim) !important;
+    margin-bottom: 4px !important;
+    display: flex !important;
+    gap: 8px !important;
+}
+
+#sh-chat-viewer .sh-msg .sh-msg-body { white-space: pre-wrap !important; word-break: break-word !important; }
+#sh-chat-viewer .sh-msg.sh-hidden .sh-msg-body { color: #fda4af !important; }
+
+#sh-chat-viewer .sh-popup-close,
+.sh-popup-close {
+    cursor: pointer !important;
+    padding: 3px 11px !important;
+    border-radius: 8px !important;
+    opacity: 0.85 !important;
+    color: #fff !important;
+    font-size: 15px !important;
+}
+
+#sh-chat-viewer .sh-popup-close:hover,
+.sh-popup-close:hover { opacity: 1 !important; background: rgba(255, 255, 255, 0.18) !important; }
